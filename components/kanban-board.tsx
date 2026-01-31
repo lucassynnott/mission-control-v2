@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,23 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  column_status: string;
-  priority: "low" | "medium" | "high";
-  assignee: string | null;
-  project_tag: string;
-}
-
-const initialTasks: Task[] = [
-  { id: "1", title: "Setup SSE endpoint", description: "Create /api/sse/route.ts", column_status: "in_progress", priority: "high", assignee: "Johnny", project_tag: "Mission Control" },
-  { id: "2", title: "Design agent cards", description: "Avatar, status, token usage", column_status: "todo", priority: "medium", assignee: null, project_tag: "UI" },
-  { id: "3", title: "Kanban drag-and-drop", description: "Implement @dnd-kit", column_status: "done", priority: "high", assignee: "Johnny", project_tag: "Mission Control" },
-  { id: "4", title: "Activity feed UI", description: "Real-time updates display", column_status: "review", priority: "medium", assignee: "Claws", project_tag: "UI" },
-];
+import { supabase, Task } from "@/lib/supabase";
 
 const columns = [
   { id: "backlog", label: "INBOX", color: "bg-neutral-700" },
@@ -53,48 +37,20 @@ const priorityColors = {
 };
 
 function SortableTask({ task }: { task: Task }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <Card className="bg-neutral-800/50 border-neutral-700 hover:border-neutral-600 cursor-grab active:cursor-grabbing">
         <CardContent className="p-3">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className="text-sm font-medium text-neutral-200 line-clamp-2">
-              {task.title}
-            </h4>
-          </div>
-          
-          <p className="text-xs text-neutral-500 mt-1 line-clamp-2">
-            {task.description}
-          </p>
-          
+          <h4 className="text-sm font-medium text-neutral-200 line-clamp-2">{task.title}</h4>
+          <p className="text-xs text-neutral-500 mt-1 line-clamp-2">{task.description}</p>
           <div className="flex items-center justify-between mt-3">
-            <Badge 
-              variant="outline" 
-              className={`text-[10px] h-5 px-1.5 ${priorityColors[task.priority]}`}
-            >
+            <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${priorityColors[task.priority]}`}>
               {task.priority}
             </Badge>
-            
-            {task.assignee && (
-              <span className="text-[10px] text-neutral-500">
-                @{task.assignee}
-              </span>
-            )}
+            {task.assignee && <span className="text-[10px] text-neutral-500">@{task.assignee}</span>}
           </div>
         </CardContent>
       </Card>
@@ -103,19 +59,68 @@ function SortableTask({ task }: { task: Task }) {
 }
 
 export function KanbanBoard() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch tasks from Supabase
+  useEffect(() => {
+    async function fetchTasks() {
+      const { data, error } = await supabase.from('tasks').select('*').order('position');
+      if (error) console.error('Error fetching tasks:', error);
+      else setTasks(data || []);
+      setLoading(false);
+    }
+    fetchTasks();
+
+    // Subscribe to realtime changes
+    const subscription = supabase
+      .channel('tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setTasks((prev) => [...prev, payload.new as Task]);
+        } else if (payload.eventType === 'UPDATE') {
+          setTasks((prev) => prev.map((t) => (t.id === payload.new.id ? (payload.new as Task) : t)));
+        } else if (payload.eventType === 'DELETE') {
+          setTasks((prev) => prev.filter((t) => t.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    return () => { subscription.unsubscribe(); };
+  }, []);
+
+  // SSE for activity feed updates
+  useEffect(() => {
+    const eventSource = new EventSource('/api/sse');
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('SSE message:', data);
+    };
+    return () => { eventSource.close(); };
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-    if (over && active.id !== over.id) {
+    const activeTask = tasks.find((t) => t.id === active.id);
+    const overTask = tasks.find((t) => t.id === over.id);
+    if (!activeTask || !overTask) return;
+
+    // If different columns, update status
+    if (activeTask.column_status !== overTask.column_status) {
+      const newStatus = overTask.column_status;
+      setTasks((prev) => prev.map((t) => t.id === active.id ? { ...t, column_status: newStatus } : t));
+      
+      // Update in Supabase
+      await supabase.from('tasks').update({ column_status: newStatus }).eq('id', active.id);
+    } else {
+      // Same column, reorder
       setTasks((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
         const newIndex = items.findIndex((item) => item.id === over.id);
@@ -123,6 +128,8 @@ export function KanbanBoard() {
       });
     }
   }
+
+  if (loading) return <div className="flex items-center justify-center h-full text-neutral-500">Loading...</div>;
 
   return (
     <div className="flex flex-col bg-neutral-950 overflow-hidden">
@@ -136,37 +143,21 @@ export function KanbanBoard() {
       <div className="flex-1 overflow-auto p-4">
         <div className="flex gap-4 h-full min-w-max">
           {columns.map((column) => {
-            const columnTasks = tasks.filter(
-              (task) => task.column_status === column.id
-            );
-
+            const columnTasks = tasks.filter((task) => task.column_status === column.id);
             return (
               <div key={column.id} className="w-72 flex flex-col">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${column.color}`} />
-                    <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
-                      {column.label}
-                    </h3>
+                    <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{column.label}</h3>
                   </div>
-                  <span className="text-xs text-neutral-600">
-                    {columnTasks.length}
-                  </span>
+                  <span className="text-xs text-neutral-600">{columnTasks.length}</span>
                 </div>
 
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={columnTasks.map((t) => t.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                     <div className="flex-1 space-y-2">
-                      {columnTasks.map((task) => (
-                        <SortableTask key={task.id} task={task} />
-                      ))}
+                      {columnTasks.map((task) => <SortableTask key={task.id} task={task} />)}
                     </div>
                   </SortableContext>
                 </DndContext>
