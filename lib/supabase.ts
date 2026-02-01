@@ -17,3 +17,17 @@ export type Task = {
   created_at: string;
   updated_at: string;
 };
+
+export type Agent = {
+  id: string;
+  name: string;
+  role: string;
+  model: string;
+  status: 'idle' | 'active' | 'blocked';
+  session_key: string;
+  current_task_id: string | null;
+  avatar_emoji: string | null;
+  tokens_used: number;
+  created_at: string;
+  updated_at: string;
+};

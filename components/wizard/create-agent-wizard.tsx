@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Check, ChevronRight, ChevronLeft, Bot, Wand2, Brain, Code } from "lucide-react";
+import { Check, ChevronRight, ChevronLeft, Bot, Wand2, Brain, Code, Loader2 } from "lucide-react";
 
 const ABILITIES = [
   { id: "code_gen", label: "Code Generation", icon: Code },
@@ -72,14 +72,34 @@ export function CreateAgentWizard({ onComplete }: { onComplete?: (config: AgentC
     }
   };
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleSubmit = async () => {
-    const res = await fetch("/api/agents/create-request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    });
-    if (res.ok) {
-      onComplete?.(config);
+    setSubmitting(true);
+    try {
+      const modelLabel = MODELS.find(m => m.id === config.model)?.label || config.model;
+      const res = await fetch("/api/agents/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: config.name,
+          role: config.abilities.join(', ') || 'general',
+          model: modelLabel,
+          avatar_emoji: config.avatar,
+        }),
+      });
+      if (res.ok) {
+        onComplete?.(config);
+      } else {
+        const err = await res.json();
+        console.error('Failed to create agent:', err);
+        alert('Failed to create agent: ' + (err.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Submit error:', err);
+      alert('Failed to create agent');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -256,9 +276,18 @@ export function CreateAgentWizard({ onComplete }: { onComplete?: (config: AgentC
               <ChevronRight className="h-4 w-4 ml-2" />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} className="bg-green-600 hover:bg-green-700">
-              Create Agent
-              <Check className="h-4 w-4 ml-2" />
+            <Button onClick={handleSubmit} disabled={submitting} className="bg-green-600 hover:bg-green-700">
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  Create Agent
+                  <Check className="h-4 w-4 ml-2" />
+                </>
+              )}
             </Button>
           )}
         </div>
