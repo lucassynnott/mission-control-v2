@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bot, MessageSquare, GitPullRequest, AlertCircle } from "lucide-react";
+import { Bot, MessageSquare, GitPullRequest, AlertCircle, Radio } from "lucide-react";
 
 interface Activity {
   id: string;
@@ -42,7 +42,7 @@ const INITIAL_ACTIVITIES: Activity[] = [
   {
     id: "3",
     type: "agent",
-    message: "Agent \"Code Reviewer\" created",
+    message: "Agent \"Code Reviewer\" deployed",
     agent: "System",
     timestamp: new Date(Date.now() - 600000).toISOString(),
   },
@@ -62,21 +62,22 @@ const TYPE_ICONS = {
   mention: MessageSquare,
 };
 
+// Cyberpunk type colors
 const TYPE_COLORS = {
-  task: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  agent: "bg-green-500/20 text-green-400 border-green-500/30",
-  system: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  mention: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  task: "bg-cyber-cyan/20 text-cyber-cyan border-cyber-cyan/50",
+  agent: "bg-green-500/20 text-green-400 border-green-500/50",
+  system: "bg-cyber-yellow/20 text-cyber-yellow border-cyber-yellow/50",
+  mention: "bg-purple-500/20 text-purple-400 border-purple-500/50",
 };
 
 function formatTimeAgo(timestamp: string): string {
   const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
-  if (seconds < 60) return "just now";
+  if (seconds < 60) return "NOW";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}M`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return `${hours}H`;
+  return `${Math.floor(hours / 24)}D`;
 }
 
 function HighlightMentions({ text }: { text: string }) {
@@ -85,7 +86,7 @@ function HighlightMentions({ text }: { text: string }) {
     <>
       {parts.map((part, i) =>
         part.startsWith("@") ? (
-          <span key={i} className="text-blue-400 font-medium">
+          <span key={i} className="text-cyber-cyan font-bold">
             {part}
           </span>
         ) : (
@@ -104,14 +105,10 @@ export function ActivityFeed({ isMobile }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [connected, setConnected] = useState(false);
 
-  // SSE Connection for real-time updates
   useEffect(() => {
     const eventSource = new EventSource("/api/sse");
 
-    eventSource.onopen = () => {
-      setConnected(true);
-    };
-
+    eventSource.onopen = () => setConnected(true);
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -122,104 +119,73 @@ export function ActivityFeed({ isMobile }: ActivityFeedProps) {
         console.error("Failed to parse SSE message:", e);
       }
     };
+    eventSource.onerror = () => setConnected(false);
 
-    eventSource.onerror = () => {
-      setConnected(false);
-    };
-
-    return () => {
-      eventSource.close();
-    };
+    return () => eventSource.close();
   }, []);
 
-  // Parse @mentions from messages and create notifications
-  async function handleMentions(activity: Activity) {
-    if (activity.type === "mention" && activity.metadata?.mentionedUsers) {
-      for (const username of activity.metadata.mentionedUsers) {
-        try {
-          await fetch("/api/notifications", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              user_id: username.toLowerCase(),
-              type: "mention",
-              title: `Mentioned by ${activity.agent}`,
-              message: activity.message,
-              metadata: {
-                mentioned_by: activity.agent,
-                task_id: activity.metadata?.taskId,
-                task_title: activity.metadata?.taskTitle,
-              },
-            }),
-          });
-        } catch (err) {
-          console.error("Failed to create mention notification:", err);
-        }
-      }
-    }
-  }
-
-  // Create notifications for new activities with mentions
-  useEffect(() => {
-    const latestActivity = activities[0];
-    if (latestActivity && latestActivity.type === "mention") {
-      handleMentions(latestActivity);
-    }
-  }, [activities]);
-
   return (
-    <div className={`${isMobile ? '' : 'border-l border-neutral-800'} bg-neutral-900/50 flex flex-col h-full`}>
-      {!isMobile && (
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-neutral-300">Activity</CardTitle>
-            <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
-              <span className="text-xs text-neutral-500">{connected ? "Live" : "Offline"}</span>
+    <div className={`bg-cyber-dark flex flex-col h-full`}>
+      {/* Header */}
+      <div className="p-4 border-b border-cyber-red/30 bg-cyber-panel">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Radio className="h-5 w-5 text-cyber-red" />
+            <div>
+              <h2 className="text-sm font-bold text-white tracking-wider">SYSTEM LOGS</h2>
+              <p className="text-[10px] text-cyber-cyan/60 font-mono">{activities.length} EVENTS</p>
             </div>
           </div>
-          </CardHeader>
-        )}
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${connected ? "bg-cyber-cyan animate-pulse shadow-[0_0_8px_rgba(0,240,255,0.8)]" : "bg-cyber-red"}`} />
+            <span className="text-[10px] text-cyber-cyan/60 font-mono">{connected ? "LIVE" : "OFFLINE"}</span>
+          </div>
+        </div>
+      </div>
 
-      <CardContent className={`flex-1 overflow-auto ${isMobile ? 'p-4' : 'pt-0'}`}>
+      {/* Activity List */}
+      <CardContent className={`flex-1 overflow-auto ${isMobile ? 'p-4' : 'p-3'}`}>
         <div className="space-y-3">
           {activities.map((activity) => {
             const Icon = TYPE_ICONS[activity.type];
             return (
               <div
                 key={activity.id}
-                className="flex items-start gap-3 p-2 rounded-lg hover:bg-neutral-800/50 transition-colors cursor-pointer"
+                className="relative p-3 bg-cyber-panel border border-cyber-red/20 hover:border-cyber-red/40 transition-colors cursor-pointer group"
               >
-                <Avatar className="h-8 w-8 bg-neutral-800 border border-neutral-700 shrink-0">
-                  <AvatarFallback className="text-xs bg-neutral-800 text-neutral-400">
-                    {activity.agentAvatar || <Icon className="h-4 w-4" />}
-                  </AvatarFallback>
-                </Avatar>
+                {/* Corner accents */}
+                <div className="absolute top-0 left-0 w-2 h-2 border-l border-t border-cyber-red/30" />
+                <div className="absolute top-0 right-0 w-2 h-2 border-r border-t border-cyber-red/30" />
+                
+                <div className="flex items-start gap-3">
+                  <Avatar className="h-8 w-8 bg-cyber-dark border border-cyber-red/30 shrink-0">
+                    <AvatarFallback className="text-xs bg-cyber-dark text-cyber-cyan">
+                      {activity.agentAvatar || <Icon className="h-4 w-4" />}
+                    </AvatarFallback>
+                  </Avatar>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] h-4 px-1.5 ${TYPE_COLORS[activity.type]}`}
-                    >
-                      {activity.type}
-                    </Badge>
-                    <span className="text-xs text-neutral-500">{activity.agent}</span>
-                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] h-4 px-1.5 font-mono uppercase ${TYPE_COLORS[activity.type]}`}
+                      >
+                        {activity.type}
+                      </Badge>
+                      <span className="text-xs text-cyber-cyan/60 font-mono">{activity.agent.toUpperCase()}</span>
+                      <span className="text-[10px] text-cyber-red/40 font-mono ml-auto">{formatTimeAgo(activity.timestamp)}</span>
+                    </div>
 
-                  <p className="text-sm text-neutral-300 mt-1 leading-relaxed">
-                    <HighlightMentions text={activity.message} />
-                  </p>
-
-                  {activity.metadata?.taskTitle && (
-                    <p className="text-xs text-neutral-500 mt-1 truncate">
-                      Task: {activity.metadata.taskTitle}
+                    <p className="text-sm text-white/80 mt-1.5 leading-relaxed group-hover:text-cyber-cyan transition-colors">
+                      <HighlightMentions text={activity.message} />
                     </p>
-                  )}
 
-                  <span className="text-[10px] text-neutral-600 mt-1 block">
-                    {formatTimeAgo(activity.timestamp)}
-                  </span>
+                    {activity.metadata?.taskTitle && (
+                      <p className="text-xs text-cyber-yellow/60 mt-1 font-mono truncate">
+                        MISSION: {activity.metadata.taskTitle.toUpperCase()}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             );
