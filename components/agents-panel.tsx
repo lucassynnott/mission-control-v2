@@ -10,7 +10,11 @@ import { Plus, Bot, Loader2 } from "lucide-react";
 import { CreateAgentWizard } from "./wizard/create-agent-wizard";
 import { supabase, Agent } from "@/lib/supabase";
 
-export function AgentsPanel() {
+interface AgentsPanelProps {
+  isMobile?: boolean;
+}
+
+export function AgentsPanel({ isMobile }: AgentsPanelProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
@@ -68,10 +72,11 @@ export function AgentsPanel() {
 
   return (
     <>
-      <div className="border-r border-neutral-800 bg-neutral-900/50 flex flex-col">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-neutral-300">Agents</CardTitle>
+      <div className={`${isMobile ? '' : 'border-r border-neutral-800'} bg-neutral-900/50 flex flex-col h-full`}>
+        {!isMobile && (
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-neutral-300">Agents</CardTitle>
             <Button 
               size="sm" 
               variant="ghost" 
@@ -81,9 +86,10 @@ export function AgentsPanel() {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-        </CardHeader>
+          </CardHeader>
+        )}
 
-        <CardContent className="flex-1 overflow-auto space-y-2 pt-0">
+        <CardContent className={`flex-1 overflow-auto space-y-2 ${isMobile ? 'p-4 pt-2' : 'pt-0'}`}>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />

@@ -96,7 +96,11 @@ function HighlightMentions({ text }: { text: string }) {
   );
 }
 
-export function ActivityFeed() {
+interface ActivityFeedProps {
+  isMobile?: boolean;
+}
+
+export function ActivityFeed({ isMobile }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [connected, setConnected] = useState(false);
 
@@ -164,18 +168,20 @@ export function ActivityFeed() {
   }, [activities]);
 
   return (
-    <div className="border-l border-neutral-800 bg-neutral-900/50 flex flex-col">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-neutral-300">Activity</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
-            <span className="text-xs text-neutral-500">{connected ? "Live" : "Offline"}</span>
+    <div className={`${isMobile ? '' : 'border-l border-neutral-800'} bg-neutral-900/50 flex flex-col h-full`}>
+      {!isMobile && (
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-neutral-300">Activity</CardTitle>
+            <div className="flex items-center gap-2">
+              <div className={`h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
+              <span className="text-xs text-neutral-500">{connected ? "Live" : "Offline"}</span>
+            </div>
           </div>
-        </div>
-      </CardHeader>
+          </CardHeader>
+        )}
 
-      <CardContent className="flex-1 overflow-auto pt-0">
+      <CardContent className={`flex-1 overflow-auto ${isMobile ? 'p-4' : 'pt-0'}`}>
         <div className="space-y-3">
           {activities.map((activity) => {
             const Icon = TYPE_ICONS[activity.type];
