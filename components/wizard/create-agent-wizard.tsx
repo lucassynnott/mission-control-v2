@@ -46,7 +46,7 @@ export function CreateAgentWizard({ onComplete }: { onComplete?: (config: AgentC
     model: "kimi-for-coding",
   });
 
-  const updateConfig = (key: keyof AgentConfig, value: any) => {
+  const updateConfig = (key: keyof AgentConfig, value: AgentConfig[keyof AgentConfig]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
