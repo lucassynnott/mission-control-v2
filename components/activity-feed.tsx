@@ -128,23 +128,40 @@ export function ActivityFeed() {
     };
   }, []);
 
-  // Simulate incoming activity for demo
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.7) {
-        const newActivity: Activity = {
-          id: Math.random().toString(36).substr(2, 9),
-          type: ["task", "agent", "system"][Math.floor(Math.random() * 3)] as Activity["type"],
-          message: ["Task updated", "Agent status changed", "Build completed"][Math.floor(Math.random() * 3)],
-          agent: ["Johnny", "Claws", "System"][Math.floor(Math.random() * 3)],
-          timestamp: new Date().toISOString(),
-        };
-        setActivities((prev) => [newActivity, ...prev].slice(0, 50));
+  // Parse @mentions from messages and create notifications
+  async function handleMentions(activity: Activity) {
+    if (activity.type === "mention" && activity.metadata?.mentionedUsers) {
+      for (const username of activity.metadata.mentionedUsers) {
+        try {
+          await fetch("/api/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: username.toLowerCase(),
+              type: "mention",
+              title: `Mentioned by ${activity.agent}`,
+              message: activity.message,
+              metadata: {
+                mentioned_by: activity.agent,
+                task_id: activity.metadata?.taskId,
+                task_title: activity.metadata?.taskTitle,
+              },
+            }),
+          });
+        } catch (err) {
+          console.error("Failed to create mention notification:", err);
+        }
       }
-    }, 10000);
+    }
+  }
 
-    return () => clearInterval(interval);
-  }, []);
+  // Create notifications for new activities with mentions
+  useEffect(() => {
+    const latestActivity = activities[0];
+    if (latestActivity && latestActivity.type === "mention") {
+      handleMentions(latestActivity);
+    }
+  }, [activities]);
 
   return (
     <div className="border-l border-neutral-800 bg-neutral-900/50 flex flex-col">

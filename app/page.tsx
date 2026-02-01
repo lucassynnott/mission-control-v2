@@ -1,6 +1,10 @@
 import { AgentsPanel } from "@/components/agents-panel";
 import { KanbanBoard } from "@/components/kanban-board";
 import { ActivityFeed } from "@/components/activity-feed";
+import { NotificationBell } from "@/components/notification-bell";
+
+// Force dynamic rendering to avoid build-time Supabase issues
+export const dynamic = 'force-dynamic';
 
 export default function Home() {
   return (
@@ -9,6 +13,7 @@ export default function Home() {
       <header className="h-14 border-b border-neutral-800 flex items-center px-4 bg-neutral-900">
         <h1 className="text-lg font-semibold text-neutral-100">Mission Control v2.0</h1>
         <div className="ml-auto flex items-center gap-2">
+          <NotificationBell userId="lucas" />
           <span className="text-xs text-neutral-400">🟢 Online</span>
         </div>
       </header>

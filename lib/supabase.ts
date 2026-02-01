@@ -31,3 +31,20 @@ export type Agent = {
   created_at: string;
   updated_at: string;
 };
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  type: 'mention' | 'task_assigned' | 'task_completed' | 'system';
+  title: string;
+  message: string;
+  read: boolean;
+  metadata: {
+    task_id?: string;
+    task_title?: string;
+    mentioned_by?: string;
+    link?: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+};

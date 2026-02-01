@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+
+// Dynamic import to avoid build-time Supabase initialization
+async function getSupabase() {
+  const { supabase } = await import('@/lib/supabase');
+  return supabase;
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await getSupabase();
     const body = await request.json();
     const { name, role, model, avatar_emoji } = body;
 

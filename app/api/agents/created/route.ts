@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+
+// Dynamic import to avoid build-time Supabase initialization
+async function getSupabase() {
+  const { supabase } = await import("@/lib/supabase");
+  return supabase;
+}
 
 // This endpoint receives the callback from Claws after agent creation
 export async function POST(request: Request) {
   try {
+    const supabase = await getSupabase();
     const body = await request.json();
     
     // Validate the payload from Claws
