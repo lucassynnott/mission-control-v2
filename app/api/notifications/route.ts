@@ -19,10 +19,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'user_id required' }, { status: 400 });
     }
 
+    // Resolve agent name to UUID if needed
+    let resolvedUserId = userId;
+    if (!userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      // Not a UUID, assume it's an agent name - resolve it
+      const { data: agent, error: agentError } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('name', userId)
+        .single();
+      
+      if (agentError || !agent) {
+        console.error('Failed to resolve agent name to UUID:', userId);
+        return NextResponse.json({ notifications: [] }); // Return empty instead of error
+      }
+      
+      resolvedUserId = agent.id;
+    }
+
     let query = supabase
       .from('notifications')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', resolvedUserId)
       .order('created_at', { ascending: false })
       .limit(limit);
 

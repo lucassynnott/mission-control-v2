@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await getSupabase();
     const body = await request.json();
-    const { name, role, model, avatar_emoji } = body;
+    const { name, role, model, avatar_emoji, level } = body;
 
     if (!name || !role || !model) {
       return NextResponse.json(
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
         avatar_emoji: avatar_emoji || '🤖',
         status: 'idle',
         tokens_used: 0,
+        level: level || 'specialist',
       })
       .select()
       .single();

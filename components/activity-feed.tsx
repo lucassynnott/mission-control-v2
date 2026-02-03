@@ -5,6 +5,7 @@ import { CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bot, MessageSquare, GitPullRequest, AlertCircle, Radio } from "lucide-react";
+import { highlightMentions } from "@/lib/mention-parser";
 
 interface Activity {
   id: string;
@@ -81,20 +82,9 @@ function formatTimeAgo(timestamp: string): string {
 }
 
 function HighlightMentions({ text }: { text: string }) {
-  const parts = text.split(/(@\w+)/g);
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.startsWith("@") ? (
-          <span key={i} className="text-cyber-cyan font-bold">
-            {part}
-          </span>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
-    </>
-  );
+  // Use the mention-parser highlightMentions function
+  const highlighted = highlightMentions(text);
+  return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
 }
 
 interface ActivityFeedProps {
@@ -104,8 +94,10 @@ interface ActivityFeedProps {
 export function ActivityFeed({ isMobile }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [connected, setConnected] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const eventSource = new EventSource("/api/sse");
 
     eventSource.onopen = () => setConnected(true);
@@ -173,7 +165,9 @@ export function ActivityFeed({ isMobile }: ActivityFeedProps) {
                         {activity.type}
                       </Badge>
                       <span className="text-xs text-cyber-cyan/60 font-mono">{activity.agent.toUpperCase()}</span>
-                      <span className="text-[10px] text-cyber-red/40 font-mono ml-auto">{formatTimeAgo(activity.timestamp)}</span>
+                      <span className="text-[10px] text-cyber-red/40 font-mono ml-auto" suppressHydrationWarning>
+                        {mounted ? formatTimeAgo(activity.timestamp) : '...'}
+                      </span>
                     </div>
 
                     <p className="text-sm text-white/80 mt-1.5 leading-relaxed group-hover:text-cyber-cyan transition-colors">

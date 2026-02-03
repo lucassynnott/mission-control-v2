@@ -1,210 +1,208 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
 
-// Dynamic import to avoid build-time Supabase initialization
-async function getSupabase() {
-  const { supabase } = await import('@/lib/supabase');
-  return supabase;
-}
+/**
+ * Daily Standup Generation
+ * 
+ * POST: Generate standup for last 24 hours
+ * 
+ * Returns markdown-formatted standup with:
+ * - Tasks completed
+ * - Tasks in progress
+ * - Blocked tasks
+ * - Tasks needing review
+ * - Key decisions
+ */
 
-// GET /api/standup?date=YYYY-MM-DD - Generate standup report
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await getSupabase();
-    const { searchParams } = new URL(request.url);
-    const dateParam = searchParams.get('date');
-    
-    // Calculate date range (last 24 hours or specific date)
-    const endDate = dateParam ? new Date(dateParam) : new Date();
-    const startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - 1);
-
-    const startIso = startDate.toISOString();
-    const endIso = endDate.toISOString();
-
-    // Query completed tasks in the date range
-    const { data: completedTasks, error: tasksError } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('column_status', 'done')
-      .gte('updated_at', startIso)
-      .lte('updated_at', endIso)
-      .order('updated_at', { ascending: false });
-
-    if (tasksError) {
-      console.error('Error fetching tasks:', tasksError);
-    }
-
-    // Query agent activity
-    const { data: agentActivity, error: agentsError } = await supabase
-      .from('activities')
-      .select('*')
-      .gte('created_at', startIso)
-      .lte('created_at', endIso)
-      .order('created_at', { ascending: false });
-
-    if (agentsError) {
-      console.error('Error fetching activities:', agentsError);
-    }
-
-    // Query new agents created
-    const { data: newAgents, error: newAgentsError } = await supabase
-      .from('agents')
-      .select('*')
-      .gte('created_at', startIso)
-      .lte('created_at', endIso);
-
-    if (newAgentsError) {
-      console.error('Error fetching agents:', newAgentsError);
-    }
-
-    // Compile standup report
-    const report = {
-      date: endDate.toISOString().split('T')[0],
-      period: `${startIso} to ${endIso}`,
-      summary: {
-        tasks_completed: completedTasks?.length || 0,
-        tasks_in_progress: 0, // Will query separately if needed
-        new_agents: newAgents?.length || 0,
-        activities: agentActivity?.length || 0,
-      },
-      completed_tasks: completedTasks?.map(t => ({
-        id: t.id,
-        title: t.title,
-        project: t.project_tag,
-        completed_at: t.updated_at,
-      })) || [],
-      new_agents: newAgents?.map(a => ({
-        id: a.id,
-        name: a.name,
-        model: a.model,
-        role: a.role,
-      })) || [],
-      highlights: agentActivity?.slice(0, 5).map(a => ({
-        type: a.type,
-        message: a.message,
-        agent: a.agent,
-        time: a.created_at,
-      })) || [],
-      standup_format: generateStandupText({
-        date: endDate.toISOString().split('T')[0],
-        completed: completedTasks || [],
-        agents: newAgents || [],
-        activities: agentActivity || [],
-      }),
-    };
-
-    return NextResponse.json(report);
-  } catch (err) {
-    console.error('Standup generation error:', err);
-    return NextResponse.json({ error: 'Failed to generate standup' }, { status: 500 });
-  }
-}
-
-// POST /api/standup - Trigger standup and optionally send
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { send_to_telegram, chat_id } = body;
+    const { hours = 24, sendToTelegram = false } = body;
 
-    // Generate report
-    const reportRes = await GET(request);
-    const report = await reportRes.json();
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-    if (report.error) {
-      return NextResponse.json(report, { status: 500 });
-    }
+    // Fetch completed tasks (last 24h)
+    const { data: completedTasks } = await supabase
+      .from('tasks')
+      .select('*, agent:assignee')
+      .eq('column_status', 'done')
+      .gte('updated_at', cutoffTime)
+      .order('updated_at', { ascending: false });
 
-    // Log to daily notes
-    try {
-      await fetch('/api/memory/daily', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entry: `## Daily Standup\n\n${report.standup_format}`,
-        }),
-      });
-    } catch (err) {
-      console.error('Failed to log standup to daily notes:', err);
-    }
+    // Fetch in-progress tasks
+    const { data: inProgressTasks } = await supabase
+      .from('tasks')
+      .select('*, agent:assignee')
+      .eq('column_status', 'in_progress')
+      .order('updated_at', { ascending: false });
+
+    // Fetch blocked tasks
+    const { data: blockedTasks } = await supabase
+      .from('tasks')
+      .select('*, agent:assignee')
+      .eq('column_status', 'blocked')
+      .order('updated_at', { ascending: false });
+
+    // Fetch review tasks
+    const { data: reviewTasks } = await supabase
+      .from('tasks')
+      .select('*, agent:assignee')
+      .eq('column_status', 'review')
+      .order('updated_at', { ascending: false });
+
+    // Fetch key activities (decisions, major updates)
+    const { data: decisions } = await supabase
+      .from('activities')
+      .select('*')
+      .in('type', ['system', 'agent'])
+      .gte('timestamp', cutoffTime)
+      .order('timestamp', { ascending: false })
+      .limit(10);
+
+    // Generate standup content
+    const standup = generateStandupMarkdown({
+      completed: completedTasks || [],
+      inProgress: inProgressTasks || [],
+      blocked: blockedTasks || [],
+      review: reviewTasks || [],
+      decisions: decisions || [],
+      hours,
+    });
 
     // Optionally send to Telegram
-    if (send_to_telegram && chat_id) {
-      const message = `📊 *Daily Standup: ${report.date}*\n\n${report.standup_format}`;
-      
-      // This would need Telegram bot token configured
-      // For now, just log that it would be sent
-      console.log('Would send to Telegram:', message);
+    if (sendToTelegram) {
+      await sendStandupToTelegram(standup);
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      report,
-      sent_to_telegram: send_to_telegram && chat_id ? true : false,
+    // Save to Obsidian (optional)
+    // await saveStandupToObsidian(standup);
+
+    return NextResponse.json({
+      success: true,
+      standup,
+      stats: {
+        completed: completedTasks?.length || 0,
+        inProgress: inProgressTasks?.length || 0,
+        blocked: blockedTasks?.length || 0,
+        review: reviewTasks?.length || 0,
+        decisions: decisions?.length || 0,
+      },
     });
-  } catch (err) {
-    console.error('Standup trigger error:', err);
-    return NextResponse.json({ error: 'Failed to trigger standup' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Standup generation error:', error);
+    return NextResponse.json(
+      { error: 'Failed to generate standup', details: error.message },
+      { status: 500 }
+    );
   }
 }
 
-interface StandupTask {
-  id: string;
-  title: string;
-  project_tag?: string;
+interface StandupData {
+  completed: any[];
+  inProgress: any[];
+  blocked: any[];
+  review: any[];
+  decisions: any[];
+  hours: number;
 }
 
-interface StandupAgent {
-  id: string;
-  name: string;
-  model: string;
-}
+function generateStandupMarkdown(data: StandupData): string {
+  const { completed, inProgress, blocked, review, decisions, hours } = data;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
 
-interface StandupActivity {
-  id: string;
-  type: string;
-  message: string;
-}
+  let md = `📊 **DAILY STANDUP** — ${dateStr}\n`;
+  md += `*Last ${hours} hours*\n\n`;
 
-function generateStandupText({ date, completed, agents, activities }: {
-  date: string;
-  completed: StandupTask[];
-  agents: StandupAgent[];
-  activities: StandupActivity[];
-}) {
-  const lines = [
-    `📅 *Date:* ${date}`,
-    '',
-    '📝 *Completed Tasks:*',
-  ];
-
-  if (completed.length === 0) {
-    lines.push('  • No tasks completed in this period');
+  // Completed tasks
+  if (completed.length > 0) {
+    md += `✅ **COMPLETED TODAY** (${completed.length})\n`;
+    completed.forEach(task => {
+      const agent = task.assignee || 'Unassigned';
+      md += `• **${agent}**: ${task.title}\n`;
+    });
+    md += `\n`;
   } else {
-    completed.forEach(t => {
-      lines.push(`  ✅ ${t.title} (${t.project_tag || 'no project'})`);
+    md += `✅ **COMPLETED TODAY**\n`;
+    md += `• No tasks completed\n\n`;
+  }
+
+  // In progress
+  if (inProgress.length > 0) {
+    md += `🔄 **IN PROGRESS** (${inProgress.length})\n`;
+    inProgress.slice(0, 10).forEach(task => {
+      const agent = task.assignee || 'Unassigned';
+      md += `• **${agent}**: ${task.title}\n`;
     });
+    if (inProgress.length > 10) {
+      md += `• *...and ${inProgress.length - 10} more*\n`;
+    }
+    md += `\n`;
   }
 
-  lines.push('', '🤖 *Agent Activity:*');
-  
-  if (agents.length > 0) {
-    lines.push(`  • ${agents.length} new agent(s) created:`);
-    agents.forEach(a => {
-      lines.push(`    - ${a.name} (${a.model})`);
+  // Blocked
+  if (blocked.length > 0) {
+    md += `🚫 **BLOCKED** (${blocked.length})\n`;
+    blocked.forEach(task => {
+      const agent = task.assignee || 'Unassigned';
+      md += `• **${agent}**: ${task.title}\n`;
     });
+    md += `\n`;
   }
 
-  if (activities.length > 0) {
-    lines.push(`  • ${activities.length} activity events recorded`);
+  // Needs review
+  if (review.length > 0) {
+    md += `👀 **NEEDS REVIEW** (${review.length})\n`;
+    review.forEach(task => {
+      const agent = task.assignee || 'Unassigned';
+      md += `• **${agent}**: ${task.title}\n`;
+    });
+    md += `\n`;
   }
 
-  if (agents.length === 0 && activities.length === 0) {
-    lines.push('  • No significant agent activity');
+  // Key decisions
+  if (decisions.length > 0) {
+    md += `📝 **KEY DECISIONS**\n`;
+    decisions.slice(0, 5).forEach(decision => {
+      md += `• ${decision.message}\n`;
+    });
+    md += `\n`;
   }
 
-  lines.push('', '🎯 *Focus for Next Period:*');
-  lines.push('  • Continue building Mission Control v2.0');
-  lines.push('  • [Add your priorities here]');
+  md += `---\n`;
+  md += `*Generated by Mission Control v2.0*\n`;
+  md += `*[View Dashboard](${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3006'})*`;
 
-  return lines.join('\n');
+  return md;
+}
+
+async function sendStandupToTelegram(standup: string): Promise<void> {
+  try {
+    // Use OpenClaw message API to send to Lucas's Telegram
+    const response = await fetch(`${process.env.OPENCLAW_API_URL || 'http://localhost:8765'}/api/message/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENCLAW_API_KEY || ''}`,
+      },
+      body: JSON.stringify({
+        channel: 'telegram',
+        to: process.env.LUCAS_TELEGRAM_ID || '417119499',
+        message: standup,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to send standup to Telegram:', await response.text());
+    } else {
+      console.log('Standup sent to Telegram successfully');
+    }
+  } catch (err) {
+    console.error('Telegram send error:', err);
+  }
 }

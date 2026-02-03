@@ -1,3 +1,5 @@
+import { addSSEConnection, removeSSEConnection } from '../activities/route';
+
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -5,17 +7,26 @@ export async function GET() {
   
   const stream = new ReadableStream({
     start(controller) {
+      // Register this connection with the activities system
+      addSSEConnection(controller);
+      
       // Send initial connection message
       controller.enqueue(encoder.encode('data: {"type":"connected"}\n\n'));
       
       // Heartbeat every 30 seconds
       const heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode('data: {"type":"heartbeat"}\n\n'));
+        try {
+          controller.enqueue(encoder.encode('data: {"type":"heartbeat"}\n\n'));
+        } catch (error) {
+          console.error('Heartbeat failed:', error);
+          clearInterval(heartbeat);
+        }
       }, 30000);
       
       // Cleanup on close
       return () => {
         clearInterval(heartbeat);
+        removeSSEConnection(controller);
       };
     },
   });
