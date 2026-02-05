@@ -107,9 +107,11 @@ export default function Home() {
         {/* Three-Column Layout with cyberpunk borders */}
         <div className="flex-1 grid grid-cols-[280px_minmax(0,1fr)_320px] overflow-hidden w-full" style={{ display: 'grid' }}>
           {/* Left sidebar - Agents */}
-          <div className="border-r-2 border-cyber-red/30 relative h-full">
+          <div className="border-r-2 border-cyber-red/30 relative h-full overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyber-red/50 to-transparent" />
-            <AgentsPanel />
+            <div className="h-full overflow-hidden">
+              <AgentsPanel />
+            </div>
           </div>
           
           {/* Center - Kanban */}
@@ -118,24 +120,26 @@ export default function Home() {
             <KanbanBoard />
           </div>
           
-          {/* Right sidebar - Documents + Activity Feed */}
+          {/* Right sidebar - System Logs (top 50%) + Documents (bottom 50%) */}
           <div className="border-l-2 border-cyber-red/30 relative h-full flex-shrink-0 flex flex-col bg-cyber-dark overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-l from-cyber-red/50 to-transparent" />
             
-            {/* Documents Panel - Top Half */}
-            <div className="h-1/2 border-b border-cyber-red/30 overflow-auto flex-shrink-0">
-              <div className="p-4 border-b border-cyber-red/30 bg-cyber-panel">
+            {/* System Logs - Top Half (50%) */}
+            <div className="h-1/2 border-b border-cyber-red/30 flex-shrink-0 flex flex-col overflow-hidden">
+              <ActivityFeed />
+            </div>
+            
+            {/* Documents Panel - Bottom Half (50%) */}
+            <div className="h-1/2 flex-shrink-0 flex flex-col overflow-hidden">
+              <div className="p-4 border-b border-cyber-red/30 bg-cyber-panel flex-shrink-0">
                 <h2 className="text-sm font-bold text-white tracking-wider">DOCUMENTS</h2>
                 <p className="text-[10px] text-cyber-cyan/60 font-mono">ARCHIVE</p>
               </div>
-              <div className="p-3 text-center text-xs text-cyber-cyan/40 font-mono">
-                NO DOCUMENTS
+              <div className="flex-1 overflow-auto">
+                <div className="p-3 text-center text-xs text-cyber-cyan/40 font-mono">
+                  NO DOCUMENTS
+                </div>
               </div>
-            </div>
-            
-            {/* Activity Feed - Bottom Half */}
-            <div className="h-1/2 overflow-hidden flex-shrink-0">
-              <ActivityFeed />
             </div>
           </div>
         </div>

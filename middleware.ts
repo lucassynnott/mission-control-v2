@@ -26,13 +26,34 @@ function validateServiceToken(clientId: string | null, clientSecret: string | nu
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   
-  // API routes: check service token  
+  // Whitelist SSE endpoint (browser EventSource can't send auth headers)
+  // This is safe because:
+  // 1. It's read-only (only receives events)
+  // 2. UI pages require basic auth
+  // 3. Behind Cloudflare Tunnel
+  if (pathname === '/api/sse') {
+    return NextResponse.next()
+  }
+  
+  // API routes: check service token OR basic auth
   if (pathname.startsWith('/api/')) {
     const clientId = request.headers.get('cf-access-client-id')
     const clientSecret = request.headers.get('cf-access-client-secret')
     
+    // Allow service token authentication
     if (validateServiceToken(clientId, clientSecret)) {
       return NextResponse.next()
+    }
+    
+    // Also allow basic auth for API endpoints (for browser-based requests)
+    const basicAuth = request.headers.get('authorization')
+    if (basicAuth) {
+      const authValue = basicAuth.split(' ')[1]
+      const [user, pwd] = atob(authValue).split(':')
+      
+      if (user === AUTH_USER && pwd === AUTH_PASS) {
+        return NextResponse.next()
+      }
     }
     
     // Return JSON for API routes
